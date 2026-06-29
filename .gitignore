@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Local-only project notes for Claude Code — never push to GitHub.
+CLAUDE.md
