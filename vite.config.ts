@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 // must match the repository name exactly, surrounded by slashes. If you fork or
 // rename the repo, change this string. For a user/organization page served from
 // the domain root, set base to '/'.
-const REPO_BASE = '/annual-leave-accural-calculator/';
+const REPO_BASE = '/annual-leave-accrual-calculator/';
 
 export default defineConfig({
   base: REPO_BASE,

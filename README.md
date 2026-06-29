@@ -81,7 +81,7 @@ repo name.
    repository name, surrounded by slashes. It currently is:
 
    ```ts
-   const REPO_BASE = '/annual-leave-accural-calculator/';
+   const REPO_BASE = '/annual-leave-accrual-calculator/';
    ```
 
    If you fork or rename the repo, change this string to match. For a **user/organization page**
