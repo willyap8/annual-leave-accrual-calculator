@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ForecastConfig } from './types';
 import { defaultConfig, clearStorage, loadConfig, saveConfig } from './storage';
-import { findFirstNegative } from './accrual';
+import { buildForecast } from './accrual';
 import { useTheme } from './theme';
 import ConfigForm from './components/ConfigForm';
 import LeaveList from './components/LeaveList';
@@ -34,7 +34,7 @@ export default function App() {
     setConfig(defaultConfig());
   };
 
-  const negative = useMemo(() => findFirstNegative(config), [config]);
+  const forecast = useMemo(() => buildForecast(config), [config]);
 
   return (
     <div className="app">
@@ -53,7 +53,15 @@ export default function App() {
         </button>
       </header>
 
-      <WarningBanner negative={negative} />
+      <WarningBanner negative={forecast.firstNegative} />
+
+      {forecast.totalUnpaidHours > 0 && (
+        <div className="banner banner-info" role="status">
+          <strong>Unpaid leave:</strong> {forecast.totalUnpaidHours.toFixed(1)} h of planned
+          leave falls beyond your accrued balance and is treated as unpaid leave. Your balance
+          stays at 0 (not negative) and no leave accrues during those days.
+        </div>
+      )}
 
       <main className="layout">
         <div className="column column-inputs">
@@ -63,7 +71,13 @@ export default function App() {
           <DataControls config={config} onImport={setConfig} onReset={handleReset} />
         </div>
         <div className="column column-output">
-          <BalanceChart config={config} negative={negative} theme={theme} />
+          <BalanceChart
+            config={config}
+            series={forecast.series}
+            unpaidIntervals={forecast.unpaidIntervals}
+            negative={forecast.firstNegative}
+            theme={theme}
+          />
           <LeaveList leave={config.leave} onChange={(leave) => update({ leave })} />
         </div>
       </main>

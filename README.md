@@ -11,6 +11,10 @@ on GitHub Pages.
 - **Accrual setup** — starting balance + reference date, annual entitlement (hours/year), and
   an *"accrual continues while on annual leave"* toggle.
 - **Planned leave** — add/edit/delete date-range entries with hours and an optional label.
+- **Unpaid leave** — opt-in per entry ("Allow unpaid leave if balance runs out"): hours taken
+  beyond your accrued balance become unpaid leave, so the balance floors at zero instead of
+  going negative, and no leave accrues during the unpaid days. The app shades the unpaid
+  stretch on the chart and reports the total unpaid hours.
 - **Forecast window** — pick any end date, or use the 3 / 6 / 12 / 24-month presets.
 - **Date lookup** — get the projected balance on any single date.
 - **Interactive chart** — zoom (scroll / pinch), pan (drag / touch), shaded leave periods,
@@ -43,6 +47,12 @@ balance(D) = startingBalance
   days — an entry of `H` hours over `N` days deducts `H / N` per day. The full amount is
   deducted by the entry's end date; a mid-leave date shows a partial deduction. Overlapping
   entries simply **stack** (both deductions apply).
+- **Unpaid leave (per-entry opt-in):** if an entry has "Allow unpaid leave" enabled, the hours
+  taken once the running balance hits zero are treated as unpaid — the balance floors at zero
+  (never negative) and **no accrual happens on those unpaid days**, even when "accrual continues
+  while on leave" is on. Without the opt-in, overdrawing instead surfaces the negative-balance
+  warning. Because this depends on the *running* balance, the engine computes the forecast as a
+  **chronological day-by-day simulation** (see `src/accrual.ts`) rather than a closed form.
 - The engine is a set of pure functions and can evaluate the balance at **any** date.
 
 ### Worked examples (also pinned as unit tests)

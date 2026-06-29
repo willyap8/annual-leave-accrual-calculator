@@ -13,6 +13,13 @@ export interface LeaveEntry {
   hours: number;
   /** Optional free-text label / note. */
   label?: string;
+  /**
+   * If true, hours taken beyond the available balance become unpaid leave:
+   * the balance floors at zero (instead of going negative) and no accrual
+   * happens on the unpaid days. Defaults to false (overdraw shows the
+   * negative-balance warning instead).
+   */
+  allowUnpaid?: boolean;
 }
 
 export interface ForecastConfig {

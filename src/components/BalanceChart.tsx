@@ -16,8 +16,7 @@ import 'chartjs-adapter-date-fns';
 import annotationPlugin, { type AnnotationOptions } from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import type { ForecastConfig, ThemeMode } from '../types';
-import type { NegativePoint } from '../accrual';
-import { sampleSeries } from '../accrual';
+import type { DateInterval, NegativePoint, SeriesPoint } from '../accrual';
 import { formatHuman, parseISODate } from '../dates';
 
 ChartJS.register(
@@ -34,6 +33,8 @@ ChartJS.register(
 
 interface Props {
   config: ForecastConfig;
+  series: SeriesPoint[];
+  unpaidIntervals: DateInterval[];
   negative: NegativePoint | null;
   theme: ThemeMode;
 }
@@ -48,17 +49,23 @@ function palette(theme: ThemeMode) {
     text: dark ? '#cbd5e1' : '#475569',
     leave: dark ? 'rgba(250,204,21,0.14)' : 'rgba(234,179,8,0.16)',
     leaveBorder: dark ? 'rgba(250,204,21,0.35)' : 'rgba(202,138,4,0.4)',
+    unpaid: dark ? 'rgba(248,113,113,0.18)' : 'rgba(220,38,38,0.14)',
+    unpaidBorder: dark ? 'rgba(248,113,113,0.45)' : 'rgba(220,38,38,0.4)',
     danger: dark ? '#f87171' : '#dc2626',
     zero: dark ? 'rgba(248,113,113,0.5)' : 'rgba(220,38,38,0.45)',
     tooltipBg: dark ? '#1e293b' : '#ffffff',
   };
 }
 
-export default function BalanceChart({ config, negative, theme }: Props) {
+export default function BalanceChart({
+  config,
+  series,
+  unpaidIntervals,
+  negative,
+  theme,
+}: Props) {
   const chartRef = useRef<ChartJS<'line'>>(null);
   const colors = palette(theme);
-
-  const series = useMemo(() => sampleSeries(config), [config]);
 
   const data: ChartData<'line'> = useMemo(
     () => ({
@@ -104,6 +111,28 @@ export default function BalanceChart({ config, negative, theme }: Props) {
       };
     });
 
+    // Shaded region for each unpaid-leave stretch (drawn over the leave box).
+    unpaidIntervals.forEach((iv, i) => {
+      const start = parseISODate(iv.start).getTime();
+      const end = parseISODate(iv.end).getTime();
+      if (Number.isNaN(start) || Number.isNaN(end)) return;
+      items[`unpaid-${i}`] = {
+        type: 'box',
+        xMin: start,
+        xMax: end,
+        backgroundColor: colors.unpaid,
+        borderColor: colors.unpaidBorder,
+        borderWidth: 1,
+        label: {
+          display: i === 0,
+          content: 'Unpaid leave',
+          position: { x: 'center', y: 'end' },
+          color: colors.danger,
+          font: { size: 10 },
+        },
+      };
+    });
+
     // Zero threshold line.
     items.zero = {
       type: 'line',
@@ -134,7 +163,7 @@ export default function BalanceChart({ config, negative, theme }: Props) {
     }
 
     return items;
-  }, [config.leave, negative, colors]);
+  }, [config.leave, unpaidIntervals, negative, colors]);
 
   const options: ChartOptions<'line'> = useMemo(
     () => ({

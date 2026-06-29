@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DAYS_PER_YEAR,
   balanceAt,
+  buildForecast,
   dailyRate,
   findFirstNegative,
   sampleSeries,
@@ -23,12 +24,18 @@ function makeConfig(overrides: Partial<ForecastConfig> = {}): ForecastConfig {
   };
 }
 
-const leave = (start: string, end: string, hours: number, label?: string): LeaveEntry => ({
+const leave = (
+  start: string,
+  end: string,
+  hours: number,
+  opts: { label?: string; allowUnpaid?: boolean } = {},
+): LeaveEntry => ({
   id: `${start}-${end}`,
   start,
   end,
   hours,
-  label,
+  label: opts.label,
+  allowUnpaid: opts.allowUnpaid,
 });
 
 describe('dailyRate', () => {
@@ -119,7 +126,7 @@ describe('edge cases', () => {
   it('flags the first negative balance and attributes an entry', () => {
     const cfg = makeConfig({
       startingBalance: 10,
-      leave: [leave('2026-02-01', '2026-02-05', 100, 'Big trip')],
+      leave: [leave('2026-02-01', '2026-02-05', 100, { label: 'Big trip' })],
     });
     const neg = findFirstNegative(cfg);
     expect(neg).not.toBeNull();
@@ -129,6 +136,43 @@ describe('edge cases', () => {
 
   it('returns null when the balance never goes negative', () => {
     expect(findFirstNegative(makeConfig())).toBeNull();
+  });
+
+  describe('unpaid leave (allowUnpaid)', () => {
+    // start 10 h, 100 h of leave over 1–10 Feb -> balance runs out mid-leave.
+    const unpaidCfg = (allowUnpaid: boolean) =>
+      makeConfig({
+        startingBalance: 10,
+        leave: [leave('2026-02-01', '2026-02-10', 100, { allowUnpaid, label: 'Trip' })],
+      });
+
+    it('without allowUnpaid the balance goes negative (warning path)', () => {
+      const f = buildForecast(unpaidCfg(false));
+      expect(f.firstNegative).not.toBeNull();
+      expect(f.totalUnpaidHours).toBe(0);
+    });
+
+    it('with allowUnpaid the balance floors at zero and never goes negative', () => {
+      const f = buildForecast(unpaidCfg(true));
+      expect(f.firstNegative).toBeNull();
+      for (const p of f.series) expect(p.balance).toBeGreaterThanOrEqual(-1e-9);
+    });
+
+    it('reports the overdrawn hours as unpaid leave', () => {
+      const f = buildForecast(unpaidCfg(true));
+      // 100 h leave, only ~23.7 h covered by balance + accrual -> ~76.27 h unpaid.
+      close(f.totalUnpaidHours, 76.2669404517454, 1e-4);
+      expect(f.unpaidIntervals).toHaveLength(1);
+    });
+
+    it('does not accrue during unpaid leave even when accrual-while-on-leave is on', () => {
+      const cfg = unpaidCfg(true);
+      expect(cfg.accrueWhileOnLeave).toBe(true);
+      // 8 Feb is deep inside the unpaid stretch: balance pinned at exactly 0.
+      close(balanceAt('2026-02-08', cfg), 0);
+      // After leave ends, accrual resumes from zero.
+      close(balanceAt('2026-02-15', cfg), 2.0807665982203973, 1e-6);
+    });
   });
 
   it('forecast end before reference date yields a single point', () => {

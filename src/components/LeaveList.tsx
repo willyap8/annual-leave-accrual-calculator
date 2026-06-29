@@ -9,7 +9,7 @@ interface Props {
 }
 
 function blankEntry(): LeaveEntry {
-  return { id: crypto.randomUUID(), start: '', end: '', hours: NaN, label: '' };
+  return { id: crypto.randomUUID(), start: '', end: '', hours: NaN, label: '', allowUnpaid: false };
 }
 
 export default function LeaveList({ leave, onChange }: Props) {
@@ -99,6 +99,20 @@ export default function LeaveList({ leave, onChange }: Props) {
                   Delete
                 </button>
               </div>
+              <label className="checkbox-row checkbox-row-compact">
+                <input
+                  type="checkbox"
+                  checked={!!entry.allowUnpaid}
+                  onChange={(e) => updateEntry(entry.id, { allowUnpaid: e.target.checked })}
+                />
+                <span>
+                  Allow unpaid leave if balance runs out
+                  <span className="field-hint">
+                    Hours beyond your balance become unpaid (balance won’t go negative; no
+                    accrual on those days).
+                  </span>
+                </span>
+              </label>
               {(errors.start || errors.end || errors.hours) && (
                 <p className="field-error">{errors.start ?? errors.end ?? errors.hours}</p>
               )}
@@ -163,6 +177,20 @@ export default function LeaveList({ leave, onChange }: Props) {
             Add
           </button>
         </div>
+        <label className="checkbox-row checkbox-row-compact">
+          <input
+            type="checkbox"
+            checked={!!draft.allowUnpaid}
+            onChange={(e) => setDraft({ ...draft, allowUnpaid: e.target.checked })}
+          />
+          <span>
+            Allow unpaid leave if balance runs out
+            <span className="field-hint">
+              Hours beyond your balance become unpaid (balance won’t go negative; no accrual on
+              those days).
+            </span>
+          </span>
+        </label>
         {draft.start !== '' && draft.end !== '' && draftErrors.end && (
           <p className="field-error">{draftErrors.end}</p>
         )}
