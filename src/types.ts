@@ -22,6 +22,14 @@ export interface LeaveEntry {
   allowUnpaid?: boolean;
 }
 
+/**
+ * Unit the user enters their accrual rate in. The canonical stored value is
+ * always `annualEntitlement` (hours/year); this only controls how that value is
+ * entered and displayed. Non-year units are defined in WORKING DAYS (Mon–Fri),
+ * matching the weekday-only accrual model — see `src/entitlement.ts`.
+ */
+export type EntitlementUnit = 'year' | 'fortnight' | 'week' | 'workingDay';
+
 export interface ForecastConfig {
   /** Annual leave hours accrued as at the reference date. */
   startingBalance: number;
@@ -29,6 +37,12 @@ export interface ForecastConfig {
   referenceDate: string;
   /** Total annual leave hours accrued per full year — drives the accrual rate. */
   annualEntitlement: number;
+  /**
+   * Display unit for the entitlement field (year / fortnight / week / working
+   * day). Purely a UI convenience — `annualEntitlement` above stays canonical.
+   * Defaults to 'year' when absent (older saved configs).
+   */
+  entitlementUnit?: EntitlementUnit;
   /**
    * When true (default), leave accrues every calendar day regardless of whether
    * the user is on leave. When false, days on planned leave do not accrue.

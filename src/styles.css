@@ -139,7 +139,8 @@ label {
 }
 input[type='number'],
 input[type='date'],
-input[type='text'] {
+input[type='text'],
+select {
   font-size: 16px; /* prevents iOS zoom-on-focus */
   padding: 0.55rem 0.6rem;
   min-height: 44px; /* comfortable touch target */
@@ -149,12 +150,32 @@ input[type='text'] {
   color: var(--text);
   width: 100%;
 }
-input:focus {
+input:focus,
+select:focus {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 input[aria-invalid='true'] {
   border-color: var(--danger);
+}
+
+/* Entitlement value + unit dropdown sit side by side; the field spans the
+   full setup grid so both have room. */
+.field-span {
+  grid-column: 1 / -1;
+}
+.input-unit-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+.input-unit-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.unit-select {
+  flex: 0 0 auto;
+  width: auto;
 }
 .field-hint {
   font-size: 0.78rem;

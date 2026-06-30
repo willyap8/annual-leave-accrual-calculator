@@ -8,8 +8,11 @@ on GitHub Pages.
 
 ## Features
 
-- **Accrual setup** — starting balance + reference date, annual entitlement (hours/year), and
-  an *"accrual continues while on annual leave"* toggle.
+- **Accrual setup** — starting balance + reference date, leave entitlement, and an *"accrual
+  continues while on annual leave"* toggle. The entitlement can be entered **per year, per
+  fortnight, per week, or per working day** (a dropdown beside the field) — all describe the
+  same annual total, shown as an "≈ X hours/year" hint. Leave accrues on **weekdays only**
+  (never on weekends).
 - **Planned leave** — add/edit/delete date-range entries with hours and an optional label.
 - **Unpaid leave** — opt-in per entry ("Allow unpaid leave if balance runs out"): hours taken
   beyond your accrued balance become unpaid leave, so the balance floors at zero instead of
@@ -32,21 +35,26 @@ The balance at any date `D` (on or after the reference date) is:
 
 ```
 balance(D) = startingBalance
-           + dailyRate × accruingDays(referenceDate → D)
+           + weekdayRate × accruingWeekdays(referenceDate → D)
            − plannedLeaveDeductedUpTo(D)
 ```
 
-- **Daily rate** = `annualEntitlement / 365.25`. The `365.25` divisor absorbs leap years
-  smoothly and lives as a single constant, `DAYS_PER_YEAR`, in
+- **Annual leave accrues on weekdays only (Mon–Fri); it never accrues on weekends.**
+- **Weekday rate** = `annualEntitlement / WEEKDAYS_PER_YEAR`, where
+  `WEEKDAYS_PER_YEAR = 365.25 × 5/7 ≈ 260.89`. The annual entitlement is **preserved** — it is
+  spread across weekdays, so each weekday accrues a little more and a full year still totals the
+  entitlement. The `365.25` base (which absorbs leap years) lives as `DAYS_PER_YEAR` in
   [`src/accrual.ts`](src/accrual.ts) — change it there to adjust the model.
 - **Accrual while on leave (checkbox):**
-  - *Checked (default):* every calendar day accrues.
-  - *Unchecked:* days on planned leave are excluded from the accruing-day count. The exclusion
-    uses the **union** of all leave ranges, so overlapping entries never double-exclude a day.
-- **Leave deduction (progressive):** each entry's hours are spread evenly across its inclusive
-  days — an entry of `H` hours over `N` days deducts `H / N` per day. The full amount is
-  deducted by the entry's end date; a mid-leave date shows a partial deduction. Overlapping
-  entries simply **stack** (both deductions apply).
+  - *Checked (default):* every **weekday** accrues (weekends still don't).
+  - *Unchecked:* weekday leave days are also excluded from accrual. The exclusion uses the
+    **union** of all leave ranges, so overlapping entries never double-exclude a day.
+- **Leave deduction (progressive, weekdays only):** each entry's hours are spread evenly across
+  the **weekdays** in its range — an entry of `H` hours over `W` weekdays deducts `H / W` per
+  weekday and nothing on weekends, so the balance stays flat on weekends during leave. The full
+  amount is deducted by the entry's end date; a mid-leave date shows a partial deduction.
+  Overlapping entries simply **stack**. (An entry that falls entirely on a weekend falls back to
+  spreading across all its days so the deduction is never lost.)
 - **Unpaid leave (per-entry opt-in):** if an entry has "Allow unpaid leave" enabled, the hours
   taken once the running balance hits zero are treated as unpaid — the balance floors at zero
   (never negative) and **no accrual happens on those unpaid days**, even when "accrual continues
@@ -57,15 +65,15 @@ balance(D) = startingBalance
 
 ### Worked examples (also pinned as unit tests)
 
-Starting balance 80 h, entitlement 152 h, reference date 2026-01-01
-(`dailyRate = 152 / 365.25 ≈ 0.41615` h/day):
+Starting balance 80 h, entitlement 152 h, reference date 2026-01-01 (a Thursday)
+(`weekdayRate = 152 / 260.89 ≈ 0.58261` h per weekday):
 
 | Scenario | Date | Balance |
 | --- | --- | --- |
-| Pure accrual, no leave | 2026-04-01 (90 days) | **≈ 117.45 h** |
-| + leave 1–5 Feb (38 h), accrual continues | 2026-04-01 | **≈ 79.45 h** |
-| same, mid-leave (3 of 5 days) | 2026-02-03 | **≈ 70.93 h** |
-| same leave, accrual paused (5 days excluded) | 2026-04-01 | **≈ 77.37 h** |
+| Pure accrual, no leave | 2026-04-01 | **≈ 117.29 h** |
+| + leave 1–5 Feb (38 h), accrual continues | 2026-04-01 | **≈ 79.29 h** |
+| same, mid-leave (1 Feb is a Sunday) | 2026-02-03 | **≈ 74.40 h** |
+| same leave, accrual paused (weekday leave days excluded) | 2026-04-01 | **≈ 76.96 h** |
 
 Run `npm test` to verify these and the edge cases.
 

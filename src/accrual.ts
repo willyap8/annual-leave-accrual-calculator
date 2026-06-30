@@ -13,39 +13,53 @@
 // See README "Accrual model" for the full description and worked examples.
 
 import type { ForecastConfig, LeaveEntry } from './types';
-import { addDays, daysBetween, parseISODate, toISODate } from './dates';
+import { addDays, countWeekdays, daysBetween, parseISODate, toISODate } from './dates';
 
 // ---------------------------------------------------------------------------
 // The single tunable constant for the whole model.
-// 365.25 absorbs leap years smoothly (one leap day every 4 years on average),
-// so the daily rate is stable across year boundaries. Change here to adjust.
+// 365.25 absorbs leap years smoothly (one leap day every 4 years on average).
+// Annual leave accrues on WEEKDAYS only (Mon–Fri), so the average number of
+// accruing days per year is 365.25 × 5/7 ≈ 260.89. The annual entitlement is
+// preserved: it is spread across weekdays, so each weekday accrues a bit more
+// and a full year still totals the entitlement.
 // ---------------------------------------------------------------------------
 export const DAYS_PER_YEAR = 365.25;
+export const WEEKDAYS_PER_YEAR = (DAYS_PER_YEAR * 5) / 7;
 
 // Floating-point slack: balances within EPS of zero count as "exhausted".
 const EPS = 1e-9;
 
-/** Hours accrued per calendar day for a given annual entitlement. */
-export function dailyRate(annualEntitlement: number): number {
-  return annualEntitlement / DAYS_PER_YEAR;
+/** Hours accrued per weekday for a given annual entitlement. */
+export function weekdayRate(annualEntitlement: number): number {
+  return annualEntitlement / WEEKDAYS_PER_YEAR;
 }
 
 // Pre-resolved per-day view of a leave entry, in day-indices from the ref date.
 interface EntryIdx {
   startIdx: number;
   endIdx: number;
-  perDay: number; // progressive deduction = hours / inclusive-days
+  perDay: number; // progressive deduction per deducting day = hours / deducting-days
   allowUnpaid: boolean;
+  /** When true, this entry only deducts on weekdays (the normal case). */
+  onlyWeekdays: boolean;
 }
 
 function entryIndices(ref: Date, leave: LeaveEntry[]): EntryIdx[] {
   return leave
     .map((e) => {
-      const startIdx = daysBetween(ref, parseISODate(e.start));
-      const endIdx = daysBetween(ref, parseISODate(e.end));
-      const days = endIdx - startIdx + 1;
-      const perDay = days > 0 && Number.isFinite(e.hours) ? e.hours / days : 0;
-      return { startIdx, endIdx, perDay, allowUnpaid: !!e.allowUnpaid };
+      const start = parseISODate(e.start);
+      const end = parseISODate(e.end);
+      const startIdx = daysBetween(ref, start);
+      const endIdx = daysBetween(ref, end);
+      const inclusiveDays = endIdx - startIdx + 1;
+      const weekdayCount = countWeekdays(start, end);
+      // Spread the hours across the weekdays in the range. If the entry falls
+      // entirely on a weekend (no weekdays), fall back to all inclusive days so
+      // the deduction is never silently lost.
+      const onlyWeekdays = weekdayCount > 0;
+      const divisor = onlyWeekdays ? weekdayCount : inclusiveDays;
+      const perDay = divisor > 0 && Number.isFinite(e.hours) ? e.hours / divisor : 0;
+      return { startIdx, endIdx, perDay, allowUnpaid: !!e.allowUnpaid, onlyWeekdays };
     })
     .filter((x) => x.endIdx >= x.startIdx); // drop inverted ranges defensively
 }
@@ -66,12 +80,14 @@ interface Simulation {
  * leave deductions one day at a time.
  *
  * Per-day rules:
- *  - Accrual: a day accrues `dailyRate` UNLESS
+ *  - Accrual: a day accrues `weekdayRate` UNLESS
+ *      (z) it's a weekend (Sat/Sun) — leave never accrues on weekends, or
  *      (a) it's a leave day and "accrue while on leave" is off, or
  *      (b) it's an unpaid-leave day — i.e. the balance is already exhausted and
  *          the day falls on a leave entry that allows unpaid leave.
  *    (b) implements "no annual leave is accrued during unpaid leave".
- *  - Deduction (progressive): each active entry deducts hours/inclusive-days.
+ *  - Deduction (progressive): each active entry deducts hours/deducting-days,
+ *    where deducting days are weekdays only (weekends deduct nothing).
  *      • Entries that do NOT allow unpaid leave deduct unconditionally and may
  *        drive the balance negative (this is the existing negative-balance path,
  *        surfaced as a non-blocking warning).
@@ -80,9 +96,10 @@ interface Simulation {
  */
 function simulate(config: ForecastConfig, untilIndex: number): Simulation {
   const ref = parseISODate(config.referenceDate);
-  const rate = dailyRate(config.annualEntitlement);
+  const rate = weekdayRate(config.annualEntitlement);
   const entries = entryIndices(ref, config.leave);
   const n = Math.max(0, untilIndex);
+  const refDow = ref.getDay(); // 0 = Sunday … 6 = Saturday
 
   const balances = new Array<number>(n + 1);
   const unpaidDay = new Array<boolean>(n + 1).fill(false);
@@ -94,14 +111,19 @@ function simulate(config: ForecastConfig, untilIndex: number): Simulation {
 
   for (let i = 1; i <= n; i++) {
     const prev = balances[i - 1];
+    const dow = (refDow + i) % 7;
+    const isWeekend = dow === 0 || dow === 6;
 
-    // What leave (if any) is active on day i?
+    // What leave (if any) is active on day i? Weekday-only entries deduct
+    // nothing on weekends (a weekend within leave is not a working day).
     let isLeaveDay = false;
     let unpaidEligibleDed = 0; // from entries that allow unpaid leave
     let mandatoryDed = 0; // from entries that do not
     for (const e of entries) {
       if (i >= e.startIdx && i <= e.endIdx) {
         isLeaveDay = true;
+        const deducts = !e.onlyWeekdays || !isWeekend;
+        if (!deducts) continue;
         if (e.allowUnpaid) unpaidEligibleDed += e.perDay;
         else mandatoryDed += e.perDay;
       }
@@ -112,7 +134,8 @@ function simulate(config: ForecastConfig, untilIndex: number): Simulation {
 
     // Accrual for the day.
     let acc = rate;
-    if (isUnpaidDay) acc = 0; // (b) no accrual during unpaid leave
+    if (isWeekend) acc = 0; // (z) no accrual on weekends
+    else if (isUnpaidDay) acc = 0; // (b) no accrual during unpaid leave
     else if (isLeaveDay && !config.accrueWhileOnLeave) acc = 0; // (a)
 
     let bal = prev + acc;
@@ -202,10 +225,22 @@ export function buildForecast(config: ForecastConfig): ForecastResult {
   const sim = simulate(config, totalDays);
 
   // --- Sampled series ---------------------------------------------------
-  // Daily up to ~520 points, then a coarser step so the count stays bounded.
+  // Sample every single day for any realistic window (up to ~MAX_DAILY_POINTS
+  // days) so the weekday/weekend sawtooth renders correctly: weekday segments
+  // rise, weekend segments stay flat. Coarser sampling would *alias* that
+  // sawtooth — a step that straddles an uneven number of weekdays produces
+  // misleading slopes (e.g. a "flat" segment landing on Thu→Sat instead of the
+  // actual Sat/Sun). For very long windows we still bound the point count, but
+  // snap the step to whole weeks so each sample spans a constant 5 weekdays and
+  // the line keeps an even slope instead of aliasing.
   // Always include leave boundaries and unpaid-leave transitions so kinks and
   // the point where the balance hits zero render crisply.
-  const step = Math.max(1, Math.ceil(totalDays / 520));
+  const MAX_DAILY_POINTS = 1500; // ~4 years of daily points
+  let step = 1;
+  if (totalDays > MAX_DAILY_POINTS) {
+    step = Math.ceil(totalDays / MAX_DAILY_POINTS);
+    step = Math.ceil(step / 7) * 7; // align to whole weeks to avoid aliasing
+  }
   const indices = new Set<number>();
   for (let i = 0; i <= totalDays; i += step) indices.add(i);
   indices.add(totalDays);

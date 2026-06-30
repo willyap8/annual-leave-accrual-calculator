@@ -1,5 +1,6 @@
-import type { ForecastConfig } from '../types';
+import type { EntitlementUnit, ForecastConfig } from '../types';
 import { validateConfig } from '../validation';
+import { ENTITLEMENT_UNITS, fromAnnual, toAnnual } from '../entitlement';
 
 interface Props {
   config: ForecastConfig;
@@ -12,8 +13,15 @@ function numberValue(raw: string): number {
   return Number(raw);
 }
 
+/** Round a derived per-unit value for display without long FP tails. */
+function displayValue(annual: number, unit: EntitlementUnit): number | '' {
+  if (!Number.isFinite(annual)) return '';
+  return Number(fromAnnual(annual, unit).toFixed(4));
+}
+
 export default function ConfigForm({ config, onChange }: Props) {
   const errors = validateConfig(config);
+  const unit = config.entitlementUnit ?? 'year';
 
   return (
     <section className="card" aria-labelledby="config-heading">
@@ -47,17 +55,42 @@ export default function ConfigForm({ config, onChange }: Props) {
           {errors.referenceDate && <p className="field-error">{errors.referenceDate}</p>}
         </div>
 
-        <div className="field">
-          <label htmlFor="annualEntitlement">Annual entitlement (hours / year)</label>
-          <input
-            id="annualEntitlement"
-            type="number"
-            inputMode="decimal"
-            step="any"
-            value={Number.isFinite(config.annualEntitlement) ? config.annualEntitlement : ''}
-            onChange={(e) => onChange({ annualEntitlement: numberValue(e.target.value) })}
-            aria-invalid={!!errors.annualEntitlement}
-          />
+        <div className="field field-span">
+          <label htmlFor="entitlementValue">Leave entitlement</label>
+          <div className="input-unit-row">
+            <input
+              id="entitlementValue"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              value={displayValue(config.annualEntitlement, unit)}
+              onChange={(e) => {
+                const v = numberValue(e.target.value);
+                onChange({ annualEntitlement: Number.isFinite(v) ? toAnnual(v, unit) : NaN });
+              }}
+              aria-invalid={!!errors.annualEntitlement}
+            />
+            <select
+              className="unit-select"
+              aria-label="Entitlement unit"
+              value={unit}
+              onChange={(e) =>
+                onChange({ entitlementUnit: e.target.value as EntitlementUnit })
+              }
+            >
+              {ENTITLEMENT_UNITS.map((u) => (
+                <option key={u.value} value={u.value}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="field-hint">
+            Accrued across weekdays only (not weekends).
+            {unit !== 'year' && Number.isFinite(config.annualEntitlement) && (
+              <> · ≈ {config.annualEntitlement.toFixed(1)} hours/year</>
+            )}
+          </p>
           {errors.annualEntitlement && (
             <p className="field-error">{errors.annualEntitlement}</p>
           )}
@@ -74,8 +107,8 @@ export default function ConfigForm({ config, onChange }: Props) {
           Accrual continues while on annual leave
           <span className="field-hint">
             {config.accrueWhileOnLeave
-              ? 'Leave accrues every calendar day.'
-              : 'Days on planned leave do not accrue.'}
+              ? 'Leave accrues every weekday (never on weekends).'
+              : 'Weekday leave days do not accrue (weekends never accrue).'}
           </span>
         </span>
       </label>

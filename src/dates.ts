@@ -34,6 +34,30 @@ export function daysBetween(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / MS_PER_DAY);
 }
 
+/** True if the date is a Saturday or Sunday. */
+export function isWeekend(date: Date): boolean {
+  const dow = date.getDay(); // 0 = Sunday, 6 = Saturday
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Count weekdays (Mon–Fri) in the inclusive range [start, end].
+ * O(1): full weeks contribute 5 each, then the leftover days are checked.
+ */
+export function countWeekdays(start: Date, end: Date): number {
+  const totalDays = daysBetween(start, end) + 1; // inclusive
+  if (totalDays <= 0) return 0;
+  const fullWeeks = Math.floor(totalDays / 7);
+  let count = fullWeeks * 5;
+  const remainder = totalDays % 7;
+  const startDow = start.getDay();
+  for (let k = 0; k < remainder; k++) {
+    const dow = (startDow + k) % 7;
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
+
 /** Return a new Date `n` days after `date`. */
 export function addDays(date: Date, n: number): Date {
   const d = new Date(date);

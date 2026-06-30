@@ -16,6 +16,7 @@ export function defaultConfig(): ForecastConfig {
     startingBalance: 0,
     referenceDate: toISODate(ref),
     annualEntitlement: 160,
+    entitlementUnit: 'year',
     accrueWhileOnLeave: true,
     leave: [],
     forecastEnd: toISODate(addMonths(ref, 12)),
